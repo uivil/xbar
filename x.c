@@ -15,11 +15,7 @@ XftFont *font;
 struct block blocks[NUMBLOCKS];
 
 int button_from_mousepos(int x, int y) {
-  if (y > bar.h)
-    return -1;
   int curr_pos = dpy.w - bar.w, prev_pos = curr_pos;
-  if (x < curr_pos)
-    return -1;
   for (int i = 0; i < NUMBLOCKS; ++i) {
     curr_pos += blocks[i].w;
     if (x < curr_pos && x > prev_pos)
@@ -95,7 +91,7 @@ void alr(int sig) {
 }
 
 int main() {
-  int timestamp = 0, fd, n, i, btn, maxsize = 0, mindelay = 1000, maxdelay = 0;
+  int timestamp = 0, fd, n, i, btn, maxsize = 0;
   XEvent xev;
   struct input_event evt;
   char dev[128];
@@ -104,6 +100,7 @@ int main() {
   clock_gettime(clock_type, &ts);
   long tic, toc, delta = 0, prevdelta;
   int oneshot = 1;
+  bool mousedown, mouseup, active = false, hot = false;
 
   signal(SIGINT, sighandler);
 
@@ -130,10 +127,6 @@ int main() {
     if (init_clbk[i])
       user_ptr[i] = init_clbk[i]();
     maxsize += block_size[i];
-    if (mindelay > interval[i])
-      mindelay = interval[i];
-    if (maxdelay < interval[i])
-      maxdelay = interval[i];
   }
   bar.size = NUMBLOCKS * (maxsize + 1);
   bar.str = malloc(bar.size);
@@ -146,7 +139,6 @@ int main() {
   process(0);
   XStoreName(dpy.d, win, bar.str);
   XFlush(dpy.d);
-
   while (running) {
     usleep(100);
     prevdelta = delta;
@@ -164,20 +156,35 @@ int main() {
     }
 
     n = read(fd, &evt, sizeof(evt));
-    if (n != sizeof(evt) && evt.type != EV_KEY)
-      continue;
-    if (evt.value == 1)
+    if (n != sizeof(evt))
       continue;
 
     XQueryPointer(dpy.d, win, &xev.xbutton.root, &xev.xbutton.subwindow,
                   &xev.xbutton.x_root, &xev.xbutton.y_root, &xev.xbutton.x,
                   &xev.xbutton.y, &xev.xbutton.state);
-    btn = evt.code - BTN_MOUSE;
-    i = button_from_mousepos(xev.xbutton.x_root, xev.xbutton.y_root);
-    if (i == -1)
-      continue;
-    if (click_clbk[i])
-      click_clbk[i](user_ptr[i], blocks[i].str, btn);
+
+    mouseup = evt.value == 1 && evt.type == EV_KEY;
+    mousedown = evt.value == 0 && evt.type == EV_KEY;
+
+    // https://www.youtube.com/watch?v=Z1qyvQsjK5Y
+    if (active) {
+      if (mouseup) {
+        if (hot) {
+          btn = evt.code - BTN_MOUSE;
+          i = button_from_mousepos(xev.xbutton.x_root, xev.xbutton.y_root);
+          if (i != -1 && click_clbk[i])
+            if (click_clbk[i](user_ptr[i], blocks[i].str, btn) == 1) {
+              XStoreName(dpy.d, win, bar.str);
+              XFlush(dpy.d);
+            }
+        }
+        active = false;
+      }
+    } else if (hot && mousedown) {
+      active = true;
+    }
+
+    hot = xev.xbutton.x_root > dpy.w - bar.w && xev.xbutton.y_root < bar.h;
   }
 
   i = NUMBLOCKS;
