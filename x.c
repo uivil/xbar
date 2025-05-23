@@ -14,18 +14,6 @@ XftFont *font;
 
 struct block blocks[NUMBLOCKS];
 
-int button_from_mousepos(int x, int y) {
-  int curr_pos = dpy.w - bar.w, prev_pos = curr_pos;
-  for (int i = 0; i < NUMBLOCKS; ++i) {
-    curr_pos += blocks[i].w;
-    if (x < curr_pos && x > prev_pos)
-      return i;
-    curr_pos += delim.w;
-    prev_pos = curr_pos;
-  }
-  return -1;
-}
-
 int get_filepath(char *path, char *keyword, char *dev) {
   struct dirent *dir;
   DIR *d;
@@ -91,23 +79,16 @@ void alr(int sig) {
 }
 
 int main() {
-  int timestamp = 0, fd, n, i, btn, maxsize = 0;
+  int timestamp = 0, fd, n, i, maxsize = 0;
   XEvent xev;
   struct input_event evt;
-  char dev[128];
   struct timespec ts;
   int clock_type = CLOCK_MONOTONIC_RAW;
   clock_gettime(clock_type, &ts);
   long tic, toc, delta = 0, prevdelta;
   int oneshot = 1;
-  bool mousedown, mouseup, active = false, hot = false;
 
   signal(SIGINT, sighandler);
-
-  if (get_filepath("/dev/input/by-id/", "mouse", dev) == -1) {
-    perror("get_filepath");
-    return -1;
-  }
 
   dpy.d = XOpenDisplay(0);
   scr = XDefaultScreen(dpy.d);
@@ -132,7 +113,6 @@ int main() {
   bar.str = malloc(bar.size);
   memset(bar.str, ' ', bar.size);
 
-  fd = open(dev, O_RDONLY | O_NONBLOCK);
   clock_gettime(clock_type, &ts);
   tic = ts.tv_sec;
 
@@ -154,37 +134,6 @@ int main() {
     } else {
       oneshot = 1;
     }
-
-    n = read(fd, &evt, sizeof(evt));
-    if (n != sizeof(evt))
-      continue;
-
-    XQueryPointer(dpy.d, win, &xev.xbutton.root, &xev.xbutton.subwindow,
-                  &xev.xbutton.x_root, &xev.xbutton.y_root, &xev.xbutton.x,
-                  &xev.xbutton.y, &xev.xbutton.state);
-
-    mouseup = evt.value == 1 && evt.type == EV_KEY;
-    mousedown = evt.value == 0 && evt.type == EV_KEY;
-
-    // https://www.youtube.com/watch?v=Z1qyvQsjK5Y
-    if (active) {
-      if (mouseup) {
-        if (hot) {
-          btn = evt.code - BTN_MOUSE;
-          i = button_from_mousepos(xev.xbutton.x_root, xev.xbutton.y_root);
-          if (i != -1 && click_clbk[i])
-            if (click_clbk[i](user_ptr[i], blocks[i].str, btn) == 1) {
-              XStoreName(dpy.d, win, bar.str);
-              XFlush(dpy.d);
-            }
-        }
-        active = false;
-      }
-    } else if (hot && mousedown) {
-      active = true;
-    }
-
-    hot = xev.xbutton.x_root > dpy.w - bar.w && xev.xbutton.y_root < bar.h;
   }
 
   i = NUMBLOCKS;
@@ -193,7 +142,6 @@ int main() {
       close_clbk[i](user_ptr[i]);
   }
 
-  close(fd);
   XftFontClose(dpy.d, font);
   XFlush(dpy.d);
   XCloseDisplay(dpy.d);

@@ -99,21 +99,6 @@ void alsa(void *p, char *s) {
   alsa_cpy(s, vol);
 }
 
-int alsa_click(void *p, char *s, int btn) {
-  struct alsa_cb *cb = p;
-  int inc[2] = {3, -3};
-  long vol;
-
-  cb->volume += inc[btn];
-  cb->volume = MAX(cb->volume, cb->minvol);
-  cb->volume = MIN(cb->volume, cb->maxvol);
-  snd_mixer_selem_set_playback_volume_all(cb->elem, cb->volume);
-  vol = cb->volume * 100 / (cb->maxvol - cb->minvol);
-  alsa_cpy(s, vol);
-
-  return 1;
-}
-
 void *alsa_init() {
   struct alsa_cb *cb = malloc(sizeof(*cb));
   const char *card = "default";
@@ -194,12 +179,6 @@ void cpu(void *p, char *s) {
   }
   s += 1;
   lseek(fd, 0, SEEK_SET);
-}
-
-int cpu_click(void *p, char *s, int btn) {
-  if (!fork())
-    execl("/bin/xterm", "/bin/xterm", "-s", "btop", NULL);
-  return 0;
 }
 
 void cpu_close(void *p) {
@@ -361,9 +340,3 @@ void *net_init() {
 }
 
 void net_close(void *p) {}
-
-int net_click(void *p, char *s, int btn) {
-  if (!fork())
-    execl("/bin/iwgtk", "/bin/iwgtk", NULL);
-  return 0;
-}
